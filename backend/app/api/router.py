@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -14,6 +14,11 @@ from app.schemas.schemas import (
     LogOut,
 )
 from app.services.dispatch_engine import CallRequest, CarState, congestion_by_floor, pick_car
+from app.services.dispatch_log import (
+    REASON_ALL_CARS_FULL,
+    REASON_SELECTED_BEST_SCORE,
+    log_dispatch_result,
+)
 
 api_router = APIRouter()
 
@@ -60,7 +65,8 @@ def create_call(body: CallCreate, db: Session = Depends(get_db)):
 
 
 @api_router.post("/dispatch", response_model=CallOut)
-def dispatch(body: DispatchRequest, db: Session = Depends(get_db)):
+def dispatch(body: DispatchRequest, request: Request, db: Session = Depends(get_db)):
+    request_id = getattr(request.state, "request_id", None) or "no-request-id"
     ticket = db.get(CallTicket, body.call_id)
     if not ticket:
         raise HTTPException(404, "呼梯不存在")
@@ -79,6 +85,14 @@ def dispatch(body: DispatchRequest, db: Session = Depends(get_db)):
         ticket.status = "rejected"
         db.commit()
         db.refresh(ticket)
+        log_dispatch_result(
+            request_id=request_id,
+            call_id=ticket.id,
+            car_id=None,
+            score=None,
+            accepted=False,
+            reason=REASON_ALL_CARS_FULL,
+        )
         raise HTTPException(409, "无可用轿厢（满员）")
     car = db.get(ElevatorCar, best.car_id)
     assert car
@@ -97,6 +111,14 @@ def dispatch(body: DispatchRequest, db: Session = Depends(get_db)):
     )
     db.commit()
     db.refresh(ticket)
+    log_dispatch_result(
+        request_id=request_id,
+        call_id=ticket.id,
+        car_id=car.id,
+        score=round(best.score, 1),
+        accepted=True,
+        reason=REASON_SELECTED_BEST_SCORE,
+    )
     return ticket
 
 

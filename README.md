@@ -32,6 +32,22 @@ docker compose up --build
 2. 在呼梯页登记请求，在派工页按评分分配轿厢。
 3. 回放页查看派工轨迹，拥堵页查看高峰楼层。
 
+## 派工日志
+
+每次派工决策（派工成功 / 满员拒绝）都会通过 logger `liftbay.dispatch` 向 stdout 输出一行 JSON 结构化日志（成功为 INFO，拒绝为 WARNING）。日志仅用于检索与告警，**不替代回放表**——`dispatch_logs` 仍照常写库，回放以数据库为准。日志不记录乘客个人信息。
+
+| 字段 | 含义 |
+| --- | --- |
+| `event` | `dispatch_assigned`（派工成功）/ `dispatch_rejected`（满员拒绝） |
+| `request_id` | 请求关联 ID：取自请求头 `X-Request-Id`（缺失则自动生成），随响应头返回 |
+| `call_id` | 呼梯编号 |
+| `car_id` | 胜者轿厢编号；拒绝时为 `null` |
+| `score` | 胜者评分；拒绝时为 `null` |
+| `accepted` | 是否接受 |
+| `reason` | 接受/拒绝原因：`selected_best_score` / `all_cars_full` |
+
+每条日志的文本行也包含同样的 `key=value` 字段；同一呼梯连续两次派工的 `request_id` 不同，日志行不会雷同，可直接按 `event`、`call_id`、`request_id` 检索。
+
 ## 开发与测试
 
 ```bash
