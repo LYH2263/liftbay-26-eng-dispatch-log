@@ -14,6 +14,7 @@ from app.schemas.schemas import (
     LogOut,
 )
 from app.services.dispatch_engine import CallRequest, CarState, congestion_by_floor, pick_car
+from app.services.dispatch_log import log_accepted, log_rejected, new_request_id
 
 api_router = APIRouter()
 
@@ -73,8 +74,16 @@ def dispatch(body: DispatchRequest, db: Session = Depends(get_db)):
         CarState(c.id, c.floor, c.direction, c.load, c.capacity) for c in car_rows
     ]
     call = CallRequest(ticket.id, ticket.floor, ticket.direction, ticket.passengers)
+    request_id = new_request_id()
     best = pick_car(cars, call)
     if best is None:
+        # 结构化日志与回放表各写一份：日志用于检索，回放是业务事实来源。
+        log_rejected(
+            request_id=request_id,
+            call_id=ticket.id,
+            score=None,
+            reason="全部轿厢满员",
+        )
         db.add(DispatchLog(call_id=ticket.id, car_id=None, detail="全部轿厢满员，拒绝派工"))
         ticket.status = "rejected"
         db.commit()
@@ -88,6 +97,13 @@ def dispatch(body: DispatchRequest, db: Session = Depends(get_db)):
     car.load += ticket.passengers
     car.floor = ticket.floor
     car.direction = ticket.direction
+    log_accepted(
+        request_id=request_id,
+        call_id=ticket.id,
+        car_id=car.id,
+        score=best.score,
+        reason=best.reason,
+    )
     db.add(
         DispatchLog(
             call_id=ticket.id,

@@ -37,3 +37,21 @@ docker compose up --build
 ```bash
 docker compose exec api pytest -q
 ```
+
+## 派工日志
+
+派工在接受与满员拒绝时各输出一条结构化 JSON 日志（logger：`liftbay.dispatch`），
+每次请求一个唯一 `request_id`；同一呼梯连续两次派工各自独立成条，可按 `call_id`、
+`request_id` 检索。日志仅用于观测，不替代回放表（`dispatch_logs` 仍写库），
+且只含运营字段，不记录乘客隐私之外的额外个人信息。
+
+| 字段 | 说明 |
+| --- | --- |
+| `event` | 固定为 `dispatch_decision` |
+| `request_id` | 单次派工请求唯一 ID，用于关联一次请求 |
+| `call_id` | 呼梯编号 |
+| `car_id` | 胜者轿厢编号；满员拒绝时为 `null` |
+| `score` | 胜者评分；满员拒绝无胜者时为 `null` |
+| `outcome` | `accepted`（接受）或 `rejected`（拒绝） |
+| `reason` | 接受/拒绝原因，如 `ok`、`全部轿厢满员` |
+
